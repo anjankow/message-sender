@@ -11,8 +11,8 @@ type MemPool struct {
 	pool *sync.Pool
 }
 
-func NewMemPool() *MemPool {
-	return &MemPool{
+func NewMemPool() MemPool {
+	return MemPool{
 		pool: &sync.Pool{
 			New: func() any {
 				return new(bytes.Buffer)

@@ -29,13 +29,13 @@ func TestQueue(t *testing.T) {
 		require.NoError(t, q.Enqueue(ctx, "c"))
 
 		// Assert that the messages are dequeued in the correct order
-		a, err := q.Dequeue(ctx)
+		a, _, err := q.Dequeue(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "a", a)
-		b, err := q.Dequeue(ctx)
+		b, _, err := q.Dequeue(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "b", b)
-		c, err := q.Dequeue(ctx)
+		c, _, err := q.Dequeue(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "c", c)
 	})
@@ -85,9 +85,10 @@ func TestQueue(t *testing.T) {
 
 			wg.Go(func() {
 				<-start
-				d, err := q.Dequeue(ctx)
+				d, release, err := q.Dequeue(ctx)
 				assert.NoError(t, err)
 				assert.Equal(t, "a", d)
+				release()
 			})
 		}
 
