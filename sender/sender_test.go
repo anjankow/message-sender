@@ -92,6 +92,9 @@ func waitToRcv(t *testing.T, ch <-chan struct{}, timeout time.Duration) {
 	tm := time.NewTimer(timeout)
 	select {
 	case <-ch:
+		// Sleep here just one millisecond
+		// to let the POST request be processed before we shutdown
+		time.Sleep(time.Millisecond)
 	case <-tm.C:
 		t.Errorf("test timed out")
 	}
