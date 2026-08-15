@@ -31,13 +31,13 @@ func TestQueue(t *testing.T) {
 		// Assert that the messages are dequeued in the correct order
 		a, _, err := q.Dequeue(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "a", a)
+		require.Equal(t, "a", a.String())
 		b, _, err := q.Dequeue(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "b", b)
+		require.Equal(t, "b", b.String())
 		c, _, err := q.Dequeue(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "c", c)
+		require.Equal(t, "c", c.String())
 	})
 	t.Run("MaxCapacityExceeded", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -76,7 +76,7 @@ func TestQueue(t *testing.T) {
 		start := make(chan struct{})
 
 		var wg sync.WaitGroup
-		for range 200 {
+		for range capacity * 2 {
 			wg.Go(func() {
 				<-start
 				err := q.Enqueue(ctx, "a")
@@ -86,9 +86,10 @@ func TestQueue(t *testing.T) {
 			wg.Go(func() {
 				<-start
 				d, release, err := q.Dequeue(ctx)
+				defer release()
 				assert.NoError(t, err)
-				assert.Equal(t, "a", d)
-				release()
+				assert.Equal(t, "a", d.String())
+
 			})
 		}
 

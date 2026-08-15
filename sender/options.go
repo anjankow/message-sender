@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"net/url"
 )
 
 var ErrURLRequired = errors.New("URL is required")
@@ -39,6 +40,11 @@ func (o *SenderOptions) validateAndFix() error {
 	if o.URL == "" {
 		return ErrURLRequired
 	}
+	u, err := url.Parse(o.URL)
+	if err != nil {
+		return err
+	}
+	o.URL = u.String()
 
 	if o.MaxMessageSize <= 0 {
 		o.MaxMessageSize = defaultMaxMessageSize

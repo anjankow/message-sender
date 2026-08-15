@@ -34,6 +34,8 @@ func New(opts SenderOptions) (*Sender, error) {
 	// Start background processing
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
+	// Define the stop function - it simply cancells the processing context
+	// and waits for it to finish.
 	s.stop = func() {
 		cancel()
 		wg.Wait()
@@ -43,7 +45,7 @@ func New(opts SenderOptions) (*Sender, error) {
 }
 
 // Send schedules a message to be sent.
-func (s Sender) Send(ctx context.Context, message string) error {
+func (s *Sender) Send(ctx context.Context, message string) error {
 	if len(message) > s.ops.MaxMessageSize {
 		return fmt.Errorf("message is too long: %d > %d", len(message), s.ops.MaxMessageSize)
 	}
@@ -55,7 +57,7 @@ func (s Sender) Send(ctx context.Context, message string) error {
 }
 
 // Stop stops the background processing of the sender.
-func (s Sender) Stop() {
+func (s *Sender) Stop() {
 	s.stop()
 }
 
@@ -73,15 +75,15 @@ func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 				return
 			default:
 				msg, release, err := s.queue.Dequeue(ctx)
-				defer release()
-
 				if err != nil {
 					// Handle the error as configured by the user
 					s.ops.OnError(msg, err)
 					continue
 				}
+				defer release()
 
-				// Send the message in a separate goroutine
+				// Send the message in a separate goroutine,
+				// use semaphore for the control over the number of concurrent requests.
 				select {
 				case <-ctx.Done():
 					return
