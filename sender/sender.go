@@ -2,6 +2,7 @@ package sender
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -65,7 +66,7 @@ func (s *Sender) Stop() {
 // It returns immediately when the passed context is done.
 func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 	semaphore := make(chan struct{}, s.ops.ConcurrentRequests)
-	client := internal.NewHTTPClient(s.ops.URL)
+	client := NewHTTPClient(s.ops.URL)
 
 	wg.Go(func() {
 		for {
@@ -77,7 +78,9 @@ func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 				msg, release, err := s.queue.Dequeue(ctx)
 				if err != nil {
 					// Handle the error as configured by the user
-					s.ops.OnError(msg, err)
+					if !errors.Is(err, context.Canceled) {
+						s.ops.OnError(msg, err)
+					}
 					continue
 				}
 				defer release()

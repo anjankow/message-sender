@@ -1,4 +1,4 @@
-package internal
+package sender
 
 import (
 	"bytes"
@@ -7,6 +7,24 @@ import (
 	"io"
 	"net/http"
 )
+
+type HTTPError struct {
+	Status int
+	Body   string
+}
+
+func (e HTTPError) Error() string {
+	return fmt.Sprintf("response error: status: %d, body: %s", e.Status, e.Body)
+}
+
+func (e HTTPError) Is(target error) bool {
+	t, ok := target.(HTTPError)
+	return ok && e.Status == t.Status
+}
+
+func ErrInvalidStatus(code int) error {
+	return fmt.Errorf("invalid status code: %d", code)
+}
 
 type HTTPClient struct {
 	url string
@@ -33,7 +51,10 @@ func (h HTTPClient) Post(ctx context.Context, body bytes.Buffer) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Read the possible reason for failure from the response
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
+		return HTTPError{
+			Status: resp.StatusCode,
+			Body:   string(bodyBytes),
+		}
 	}
 
 	return nil
