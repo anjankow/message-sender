@@ -47,7 +47,7 @@ func New(opts SenderOptions) (*Sender, error) {
 
 // Send schedules a message to be sent.
 func (s *Sender) Send(ctx context.Context, message string) error {
-	if len(message) > s.ops.MaxMessageSize {
+	if s.ops.MaxMessageSize > 0 && len(message) > s.ops.MaxMessageSize {
 		return fmt.Errorf("message is too long: %d > %d", len(message), s.ops.MaxMessageSize)
 	}
 

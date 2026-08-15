@@ -9,14 +9,14 @@ import (
 
 var ErrURLRequired = errors.New("URL is required")
 
-const defaultMaxMessageSize = 500 * 1024 // 500KB
+const defaultMaxMessageSize = 0 // no limit
 const defaultQueueCapacity = 1000
 const defaultConcurrentReqs = 10
 
 type SenderOptions struct {
 	// URL is the URL of the message sender service. REQUIRED
 	URL string
-	// MaxMessageSize is the maximum size of a message in bytes. If it's <= 0, the default value is used.
+	// MaxMessageSize is the maximum size of a message in bytes. Zero means no limit.
 	MaxMessageSize int
 	// QueueCapacity is the maximum number of messages that can be queued for sending without blocking. If it's <= 0, the default value is used.
 	QueueCapacity int
@@ -46,7 +46,7 @@ func (o *SenderOptions) validateAndFix() error {
 	}
 	o.URL = u.String()
 
-	if o.MaxMessageSize <= 0 {
+	if o.MaxMessageSize < 0 {
 		o.MaxMessageSize = defaultMaxMessageSize
 	}
 	if o.QueueCapacity <= 0 {
