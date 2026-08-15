@@ -106,7 +106,7 @@ func TestSender(t *testing.T) {
 			_, err := r.Body.Read(buf[:])
 			require.NoError(t, err)
 			defer r.Body.Close()
-			assert.Equal(t, byte('x'), buf[0])
+			assert.Equal(t, byte(r.ContentLength), buf[0])
 
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -124,7 +124,9 @@ func TestSender(t *testing.T) {
 		start := make(chan struct{})
 		var wg sync.WaitGroup
 		for range msgCnt {
-			message := bytes.Repeat([]byte{'x'}, rand.Intn(1024)+1) // max 1KB
+			n := rand.Intn(255)
+			message := bytes.Repeat([]byte{byte(n)}, n)
+
 			wg.Add(1)
 			go func(msg string) {
 				defer wg.Done()
