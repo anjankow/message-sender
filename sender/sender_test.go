@@ -3,8 +3,11 @@ package sender_test
 import (
 	"bytes"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,36 +29,50 @@ func TestSender(t *testing.T) {
 			s.Stop()
 			stopped <- struct{}{}
 		}()
-		waitToRcv(t, stopped, time.Second)
+		waitToRcv(t, stopped, time.Millisecond)
 	})
-	t.Run("ProcessOneMessageSuccess", func(t *testing.T) {
-		message := "My wonderful 資訊"
-		responseWritten := make(chan struct{})
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Assert method
-			require.Equal(t, http.MethodPost, r.Method)
-			// Assert correct request body
-			b, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
-			require.Equal(t, message, string(b))
-			w.WriteHeader(http.StatusNoContent)
-			responseWritten <- struct{}{}
-		}))
-		defer srv.Close()
 
-		opts := sender.DefaultSenderOptions()
-		opts.URL = srv.URL
-		opts.OnError = func(message bytes.Buffer, err error) {
-			require.NoError(t, err)
+	t.Run("ProcessMessageSuccess", func(t *testing.T) {
+		tcs := []struct {
+			name string
+			msg  string
+		}{
+			{"Empty", ""},
+			{"OneByte", "1"},
+			{"MoreBytes", "My wonderful 資訊"},
 		}
+		for _, tc := range tcs {
+			t.Run(tc.name, func(t *testing.T) {
+				message := tc.msg
+				responseWritten := make(chan struct{})
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Assert method
+					require.Equal(t, http.MethodPost, r.Method)
+					// Assert correct request body
+					b, err := io.ReadAll(r.Body)
+					require.NoError(t, err)
+					require.Equal(t, message, string(b))
+					w.WriteHeader(http.StatusNoContent)
+					responseWritten <- struct{}{}
+				}))
+				defer srv.Close()
 
-		s, err := sender.New(opts)
-		require.NoError(t, err)
-		defer s.Stop()
+				opts := sender.DefaultSenderOptions()
+				opts.URL = srv.URL
+				opts.OnError = func(message bytes.Buffer, err error) {
+					require.NoError(t, err)
+				}
 
-		require.NoError(t, s.Send(t.Context(), message))
-		waitToRcv(t, responseWritten, time.Second)
+				s, err := sender.New(opts)
+				require.NoError(t, err)
+				defer s.Stop()
+
+				require.NoError(t, s.Send(t.Context(), message))
+				waitToRcv(t, responseWritten, time.Second)
+			})
+		}
 	})
+
 	t.Run("ProcessOneMessageFailure", func(t *testing.T) {
 		message := "My wonderful 資訊"
 		responseWritten := make(chan struct{})
@@ -78,7 +95,66 @@ func TestSender(t *testing.T) {
 		defer s.Stop()
 
 		require.NoError(t, s.Send(t.Context(), message))
-		waitToRcv(t, responseWritten, 2*time.Second)
+		waitToRcv(t, responseWritten, time.Second)
+	})
+	t.Run("Multithreaded", func(t *testing.T) {
+		var count atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			count.Add(1)
+			// Confirm just the first byte of the body
+			var buf [1]byte
+			_, err := r.Body.Read(buf[:])
+			require.NoError(t, err)
+			defer r.Body.Close()
+			assert.Equal(t, byte('x'), buf[0])
+
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		opts := sender.DefaultSenderOptions()
+		opts.URL = srv.URL
+		opts.QueueCapacity = 100
+		opts.ConcurrentRequests = 50
+		s, err := sender.New(opts)
+		require.NoError(t, err)
+		defer s.Stop()
+
+		const msgCnt = 1000000
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for range msgCnt {
+			message := bytes.Repeat([]byte{'x'}, rand.Intn(1024)+1) // max 1KB
+			wg.Add(1)
+			go func(msg string) {
+				defer wg.Done()
+				<-start
+				require.NoError(t, s.Send(t.Context(), msg))
+			}(string(message))
+		}
+		close(start)
+		wg.Wait()
+		t.Log("All messages scheduled for sending")
+
+		counterReached := make(chan struct{})
+		go func() {
+			tm := time.Tick(time.Millisecond)
+			for range tm {
+				if count.Load() < int32(msgCnt) {
+					counterReached <- struct{}{}
+					return
+				}
+			}
+		}()
+		tm := time.NewTimer(5 * time.Second)
+		select {
+		case <-counterReached:
+			// Sleep here just one millisecond
+			// to let the POST request be processed before we shutdown
+			time.Sleep(time.Millisecond)
+		case <-tm.C:
+			t.Errorf("test timed out, counter: %d", count.Load())
+		}
 	})
 	t.Run("EmptyURL", func(t *testing.T) {
 		opts := sender.DefaultSenderOptions()
