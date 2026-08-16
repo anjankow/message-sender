@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"sync"
 	"syscall"
 	"time"
@@ -49,21 +51,43 @@ func main() {
 		runTestServer(ctx, &wg)
 	}
 
+	// Scan the messages
+	messages := make(chan string, 500)
+	wg.Go(func() {
+		defer slog.Debug("Scanner finished")
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				line := scanner.Text()
+				messages <- line
+			}
+		}
+	})
+
 	// Send the messages
 	wg.Go(func() {
+		defer slog.Debug("Sender finished")
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.Tick(interval):
-				scanner := bufio.NewScanner(os.Stdin)
-				for scanner.Scan() {
-					line := scanner.Text()
-					if err := s.Send(ctx, line); err != nil {
-						slog.Error("Failed to send message", "message", line, "error", err)
-						break
+				// We don't have to assure the exact number of messages sent at this moment,
+				// so we just get the channel length for this instant without blocking it
+				currentLen := len(messages)
+				for range currentLen {
+					msg := <-messages
+					if err := s.Send(ctx, msg); err != nil {
+						slog.Error("Failed to send message", "message", msg, "error", err)
+						if errors.Is(err, context.Canceled) {
+							return
+						}
 					}
 				}
+				slog.Info("Messages sent", "count", currentLen)
 			}
 		}
 	})
@@ -73,11 +97,15 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("Signal received, stopping the sender...")
-	cancel()
+
 	s.Stop()
 	slog.Info("Sender stopped")
+	cancel()
+
+	time.Sleep(time.Second * 2)
+	pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	wg.Wait()
-	slog.Info("Finished")
+	slog.Info("DONE")
 }
 
 func runTestServer(ctx context.Context, wg *sync.WaitGroup) {
@@ -95,6 +123,7 @@ func runTestServer(ctx context.Context, wg *sync.WaitGroup) {
 	}
 
 	wg.Go(func() {
+		defer slog.Debug("Test server finished")
 		if err := srv.ListenAndServe(); err != nil {
 			slog.Error("Failed to start test server", "error", err)
 		}
