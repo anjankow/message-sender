@@ -21,7 +21,7 @@ import (
 var intervalFlag = flag.Int("interval", 1000, "interval in milliseconds")
 var urlFlag = flag.String("url", "", "URL to send the message to")
 var testFlag = flag.Bool("test", false, "run a test server on port 7777")
-var logLevelFlag = flag.Int("log-level", int(slog.LevelDebug), "log level as defined by slog")
+var logLevelFlag = flag.Int("log-level", int(slog.LevelDebug), "log level as defined by slog (as integer)")
 
 func main() {
 	flag.Parse()
