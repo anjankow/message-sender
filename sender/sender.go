@@ -88,8 +88,6 @@ func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 				// Send the message in a separate goroutine,
 				// use semaphore for the control over the number of concurrent requests.
 				select {
-				case <-ctx.Done():
-					return
 				case semaphore <- struct{}{}:
 					wg.Go(func() {
 						defer func() { <-semaphore }()
@@ -99,6 +97,8 @@ func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 							s.ops.OnError(msg, err)
 						}
 					})
+				case <-ctx.Done():
+					return
 				}
 			}
 		}

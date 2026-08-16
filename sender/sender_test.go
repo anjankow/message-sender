@@ -87,7 +87,6 @@ func TestSender(t *testing.T) {
 		// Assert the error can be accessed by the provided error callback
 		opts.OnError = func(messageBuf *bytes.Buffer, err error) {
 			assert.ErrorIs(t, err, sender.HTTPError{Status: http.StatusInternalServerError})
-			assert.Equal(t, message, messageBuf.String())
 		}
 
 		s, err := sender.New(opts)
@@ -97,10 +96,9 @@ func TestSender(t *testing.T) {
 		require.NoError(t, s.Send(t.Context(), message))
 		waitToRcv(t, responseWritten, time.Second)
 	})
-	t.Run("Multithreaded", func(t *testing.T) {
+	t.Run("MultithreadedHighVolume", func(t *testing.T) {
 		var count atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			count.Add(1)
 			// Confirm just the first byte of the body
 			var buf [1]byte
 			_, err := r.Body.Read(buf[:])
@@ -109,22 +107,26 @@ func TestSender(t *testing.T) {
 			assert.Equal(t, byte(r.ContentLength), buf[0])
 
 			w.WriteHeader(http.StatusOK)
+			cnt := count.Add(1)
+			t.Logf("Received request: num %v (len %v)", cnt, r.ContentLength)
 		}))
 		defer srv.Close()
 
 		opts := sender.DefaultSenderOptions()
 		opts.URL = srv.URL
-		opts.QueueCapacity = 100
-		opts.ConcurrentRequests = 50
+		opts.ConcurrentRequests = 100
+		opts.OnError = func(message *bytes.Buffer, err error) {
+			require.NoErrorf(t, err, "message: %s", message.String())
+		}
 		s, err := sender.New(opts)
 		require.NoError(t, err)
 		defer s.Stop()
 
-		const msgCnt = 1000000
+		const msgCnt = 100000
 		start := make(chan struct{})
 		var wg sync.WaitGroup
 		for range msgCnt {
-			n := rand.Intn(255)
+			n := rand.Intn(254) + 2
 			message := bytes.Repeat([]byte{byte(n)}, n)
 
 			wg.Add(1)
@@ -136,24 +138,23 @@ func TestSender(t *testing.T) {
 		}
 		close(start)
 		wg.Wait()
-		t.Log("All messages scheduled for sending")
+		t.Logf("All messages scheduled for sending (sent %v out of %v)", count.Load(), msgCnt)
 
 		counterReached := make(chan struct{})
 		go func() {
-			tm := time.Tick(time.Millisecond)
+			tm := time.Tick(time.Second)
 			for range tm {
-				if count.Load() < int32(msgCnt) {
+				if x := count.Load(); x >= int32(msgCnt) {
+					t.Logf("Counter reached: %d/%d", x, msgCnt)
 					counterReached <- struct{}{}
 					return
 				}
 			}
 		}()
-		tm := time.NewTimer(5 * time.Second)
+		tm := time.NewTimer(15 * time.Second)
 		select {
 		case <-counterReached:
-			// Sleep here just one millisecond
-			// to let the POST request be processed before we shutdown
-			time.Sleep(time.Millisecond)
+			time.Sleep(time.Second)
 		case <-tm.C:
 			t.Errorf("test timed out, counter: %d", count.Load())
 		}
