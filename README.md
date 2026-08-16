@@ -1,3 +1,5 @@
+[![Go](https://github.com/anjankow/message-sender/actions/workflows/go.yml/badge.svg)](https://github.com/anjankow/message-sender/actions/workflows/go.yml)
+
 # message-sender
 
 A Go library to facilitate sending sudden spikes of messages to a target URL.
