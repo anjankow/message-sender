@@ -59,7 +59,7 @@ func TestSender(t *testing.T) {
 
 				opts := sender.DefaultSenderOptions()
 				opts.URL = srv.URL
-				opts.OnError = func(message bytes.Buffer, err error) {
+				opts.OnError = func(message *bytes.Buffer, err error) {
 					require.NoError(t, err)
 				}
 
@@ -85,7 +85,7 @@ func TestSender(t *testing.T) {
 		opts := sender.DefaultSenderOptions()
 		opts.URL = srv.URL
 		// Assert the error can be accessed by the provided error callback
-		opts.OnError = func(messageBuf bytes.Buffer, err error) {
+		opts.OnError = func(messageBuf *bytes.Buffer, err error) {
 			assert.ErrorIs(t, err, sender.HTTPError{Status: http.StatusInternalServerError})
 			assert.Equal(t, message, messageBuf.String())
 		}

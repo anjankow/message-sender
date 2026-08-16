@@ -47,12 +47,12 @@ func (q *Queue) Enqueue(ctx context.Context, message string) error {
 // This operation is blocking if the queue is empty.
 // In such case cancel the context to return early.
 // The release function must be called to return the buffer to the pool when the message is no longer needed.
-func (q *Queue) Dequeue(ctx context.Context) (message bytes.Buffer, release func(), err error) {
+func (q *Queue) Dequeue(ctx context.Context) (message *bytes.Buffer, release func(), err error) {
 	select {
 	case buf := <-q.buffers:
-		return *buf, func() { q.release(buf) }, nil
+		return buf, func() { q.release(buf) }, nil
 	case <-ctx.Done():
-		return bytes.Buffer{}, func() {}, fmt.Errorf("failed to dequeue: %w", ctx.Err())
+		return nil, func() {}, fmt.Errorf("failed to dequeue: %w", ctx.Err())
 	}
 }
 

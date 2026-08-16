@@ -36,8 +36,8 @@ func NewHTTPClient(url string) *HTTPClient {
 	}
 }
 
-func (h HTTPClient) Post(ctx context.Context, body bytes.Buffer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, &body)
+func (h HTTPClient) Post(ctx context.Context, body *bytes.Buffer) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, body)
 	if err != nil {
 		return err
 	}

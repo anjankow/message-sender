@@ -24,7 +24,7 @@ type SenderOptions struct {
 	ConcurrentRequests int
 	// OnError is the function called when an error occurs while processing and sending a message.
 	// By default, it logs the message and the error.
-	OnError func(message bytes.Buffer, err error)
+	OnError func(message *bytes.Buffer, err error)
 }
 
 func DefaultSenderOptions() SenderOptions {
@@ -61,7 +61,7 @@ func (o *SenderOptions) validateAndFix() error {
 	return nil
 }
 
-func logError(message bytes.Buffer, err error) {
+func logError(message *bytes.Buffer, err error) {
 	// Messages can be very large, so we only log the first 200 bytes
 	msgHead := string(message.Bytes()[:min(200, len(message.Bytes()))])
 	slog.Error("Failed to send a message",
