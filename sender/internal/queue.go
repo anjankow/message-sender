@@ -29,7 +29,12 @@ func NewQueue(capacity int) (*Queue, error) {
 // In such case cancel the context to return early.
 func (q *Queue) Enqueue(ctx context.Context, message string) error {
 	buf := q.pool.GetBuffer()
-	buf.WriteString(message)
+	if n, err := buf.WriteString(message); err != nil {
+		return fmt.Errorf("failed to write string to buffer: %w", err)
+	} else if n != len(message) {
+		return fmt.Errorf("failed to write string to buffer: wrote %d bytes, expected %d", n, len(message))
+	}
+
 	select {
 	case q.buffers <- buf:
 	case <-ctx.Done():

@@ -81,9 +81,9 @@ func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 					if !errors.Is(err, context.Canceled) {
 						s.ops.OnError(msg, err)
 					}
+					release()
 					continue
 				}
-				defer release()
 
 				// Send the message in a separate goroutine,
 				// use semaphore for the control over the number of concurrent requests.
@@ -93,6 +93,7 @@ func (s *Sender) startProcessing(ctx context.Context, wg *sync.WaitGroup) {
 				case semaphore <- struct{}{}:
 					wg.Go(func() {
 						defer func() { <-semaphore }()
+						defer release()
 
 						if err := client.Post(ctx, msg); err != nil {
 							s.ops.OnError(msg, err)
