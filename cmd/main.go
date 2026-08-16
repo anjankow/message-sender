@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime/pprof"
 	"sync"
 	"syscall"
 	"time"
@@ -22,9 +21,12 @@ import (
 var intervalFlag = flag.Int("interval", 1000, "interval in milliseconds")
 var urlFlag = flag.String("url", "", "URL to send the message to")
 var testFlag = flag.Bool("test", false, "run a test server on port 7777")
+var logLevelFlag = flag.Int("log-level", int(slog.LevelDebug), "log level as defined by slog")
 
 func main() {
 	flag.Parse()
+	slog.SetLogLoggerLevel(slog.Level(*logLevelFlag))
+
 	slog.Info("Starting the message sender...", "interval", *intervalFlag, "url", *urlFlag, "test", *testFlag)
 
 	if *intervalFlag <= 0 {
@@ -69,7 +71,7 @@ func main() {
 
 	// Send the messages
 	wg.Go(func() {
-		defer slog.Debug("Sender finished")
+		defer slog.Debug("Sending finished")
 		for {
 			select {
 			case <-ctx.Done():
@@ -87,7 +89,7 @@ func main() {
 						}
 					}
 				}
-				slog.Info("Messages sent", "count", currentLen)
+				slog.Debug("Messages sent", "count", currentLen)
 			}
 		}
 	})
@@ -96,14 +98,12 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	slog.Info("Signal received, stopping the sender...")
+	slog.Info("Signal received")
 
 	s.Stop()
-	slog.Info("Sender stopped")
+	slog.Debug("Sender stopped")
 	cancel()
 
-	time.Sleep(time.Second * 2)
-	pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 	wg.Wait()
 	slog.Info("DONE")
 }
@@ -124,9 +124,11 @@ func runTestServer(ctx context.Context, wg *sync.WaitGroup) {
 
 	wg.Go(func() {
 		defer slog.Debug("Test server finished")
-		if err := srv.ListenAndServe(); err != nil {
-			slog.Error("Failed to start test server", "error", err)
-		}
+		wg.Go(func() {
+			if err := srv.ListenAndServe(); err != nil {
+				slog.Error("Failed to start test server", "error", err)
+			}
+		})
 		<-ctx.Done()
 		_ = srv.Shutdown(ctx)
 	})
